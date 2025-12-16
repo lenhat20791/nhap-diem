@@ -3,11 +3,11 @@ import time
 import tkinter as tk
 from tkinter import messagebox
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
 import logging #
 
 # --- CẤU HÌNH GHI LOG ---
@@ -20,8 +20,7 @@ logging.basicConfig(
 # --- HẾT CẤU HÌNH LOG ---
 
 # --- CẤU HÌNH CỐ ĐỊNH ---
-DRIVER_PATH = 'C:/RPA nhap diem/chromedriver-win64/chromedriver.exe'
-BROWSER_PATH = 'C:/RPA nhap diem/chrome-win64/chrome.exe'
+BROWSER_PATH = 'C:/RPA NHAP DIEM/chrome-win64/chrome.exe'
 TARGET_URL = 'https://hcm.quanlytruonghoc.edu.vn'
 
 # XPath của phần tử dropdown đầu tiên (Mầm non/Tiểu học/Trung học...)
@@ -34,47 +33,79 @@ XPATH_OPTION_THCS = "//div[@class='rcbList']//li[text()='Trung học cơ sở']"
 # HÀM CHÍNH: THỰC THI RPA 
 # ----------------------------------------------------------------------
 def run_rpa_process():
-    """Thực hiện quy trình mở trình duyệt và chọn cấp trường."""
+    """Thực hiện quy trình mở trình duyệt và chọn cấp trường (có ghi log)."""
     
     driver = None
+    logging.info("--- BẮT ĐẦU QUÁ TRÌNH TỰ ĐỘNG HÓA ---")
     try:
-        # 1. KHỞI TẠO TRÌNH DUYỆT
+        # 1. KHỞI TẠO TRÌNH DUYỆT (TỰ ĐỘNG TÌM DRIVER)
+        logging.info("1. Đang khởi tạo trình duyệt Chrome (Sử dụng WebDriverManager).")
+        
+        # --- THIẾT LẬP OPTIONS ---
         options = Options()
+        # Chỉ định đường dẫn của Chrome for Testing (Không thay đổi)
         options.binary_location = BROWSER_PATH 
-        service = Service(executable_path=DRIVER_PATH)
         options.add_experimental_option("detach", True) 
         
-        driver = webdriver.Chrome(service=service, options=options) 
-        # THÊM DÒNG NÀY: Maximize cửa sổ trình duyệt
-        driver.maximize_window()
-        driver.get(TARGET_URL)
+        # --- KHỞI TẠO DRIVER BẰNG ChromeDriverManager ---
+        # ChromeDriverManager().install() sẽ tự động tải và cache Driver tương thích
+        driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()), 
+            options=options
+        ) 
         
-        wait = WebDriverWait(driver, 10)
+        logging.info("   -> DRIVER VÀ BROWSER ĐÃ KHỞI TẠO THÀNH CÔNG.")
+        
+        # --- MAXIMIZE VÀ TRUY CẬP URL ---
+        driver.maximize_window() 
+        logging.info("   -> Đã maximize cửa sổ trình duyệt.")
+        
+        driver.get(TARGET_URL)
+        logging.info(f"   -> Đã truy cập URL: {TARGET_URL}")
+        
+        wait = WebDriverWait(driver, 20)
         
         # 2. CHỌN "TRUNG HỌC CƠ SỞ"
+        logging.info("2. Đang thực hiện tương tác UI.")
         
         # 2.1. Chờ input dropdown xuất hiện và click để mở danh sách
+        logging.info("2.1. Đang tìm kiếm và click vào dropdown chọn cấp trường...")
+        
+        # Chờ ô Input xuất hiện và có thể click được
         dropdown_input = wait.until(
             EC.element_to_be_clickable((By.XPATH, XPATH_DROPDOWN_INPUT))
         )
-        dropdown_input.click()
+        
+        # SỬ DỤNG ACTION CHAINS ĐỂ CLICK MẠNH HƠN
+        ActionChains(driver).move_to_element(dropdown_input).click().perform() 
+        logging.info("   -> Đã click thành công vào ô chọn cấp trường.")
+        
+        # Chờ 1 giây để danh sách các option (THCS, Tiểu học,...) kịp thời xuất hiện
+        time.sleep(1) 
         
         # 2.2. Chờ option "Trung học cơ sở" xuất hiện và click
+        logging.info("2.2. Đang tìm kiếm và click vào option 'Trung học cơ sở'...")
+        
+        # Chờ option THCS xuất hiện (presence_of_element_located)
         option_thcs = wait.until(
             EC.presence_of_element_located((By.XPATH, XPATH_OPTION_THCS))
         )
+        
+        # Click vào option THCS
         option_thcs.click()
+        
+        logging.info("   -> THÀNH CÔNG: Đã chọn 'Trung học cơ sở'.")
         
         # 3. THÔNG BÁO THÀNH CÔNG VÀ CHỜ HƯỚNG DẪN TIẾP THEO
         messagebox.showinfo("THÀNH CÔNG", "✅ Đã chọn 'Trung học cơ sở' thành công. Bot đang chờ hướng dẫn tiếp theo.")
         
     except Exception as e:
-        messagebox.showerror("LỖI TỰ ĐỘNG HÓA", f"Không thể hoàn tất thao tác. Kiểm tra lại cấu hình hoặc XPath. Chi tiết lỗi: {e}")
+        logging.error(f"!!! LỖI QUAN TRỌNG TẠI BƯỚC TỰ ĐỘNG HÓA: {e}", exc_info=True)
+        messagebox.showerror("LỖI TỰ ĐỘNG HÓA", f"Không thể hoàn tất thao tác. Vui lòng kiểm tra file LOG ({LOG_FILE}). Chi tiết lỗi: {e}")
         
     finally:
-        # Giữ trình duyệt mở
+        logging.info("--- KẾT THÚC QUÁ TRÌNH TỰ ĐỘNG HÓA ---")
         pass
-
 
 # ----------------------------------------------------------------------
 # XÂY DỰNG GIAO DIỆN NGƯỜI DÙNG (UI)
