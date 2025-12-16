@@ -26,12 +26,17 @@ BROWSER_PATH = 'C:/RPA NHAP DIEM/chrome-win64/chrome.exe'
 TARGET_URL = 'https://hcm.quanlytruonghoc.edu.vn'
 
 # XPath của phần tử dropdown đầu tiên (Mầm non/Tiểu học/Trung học...)
-# XPath mới cho ô input để click mở dropdown
-XPATH_DROPDOWN_INPUT = "//input[@class='rcbInput radPreventDecorate' and @type='text']"
+XPATH_DROPDOWN_INPUT = "//input[@value='Mầm non' and @type='text']"
 # XPATH OPTION (Đã được xác nhận là đúng)
 XPATH_OPTION_THCS = "//li[text()='Trung học cơ sở']"
-
-
+# Cho Phường/Xã
+XPATH_DROPDOWN_PHUONGXA_INPUT = "//input[@id='ctl00_ContentPlaceHolder1_rcbPhongGD_Input']"
+XPATH_OPTION_HANHTHONG = "//li[text()='Phường Hạnh Thông']"
+# SỬA LẠI XPATH TÌM BOX CUỘN BẰNG ID ĐẦY ĐỦ
+dropdown_list_box = wait.until(
+    EC.presence_of_element_located((By.ID, "ctl00_ContentPlaceHolder1_rcbPhongGD_DropDown"))
+)
+driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight/2", dropdown_list_box)
 # ----------------------------------------------------------------------
 # HÀM CHÍNH: THỰC THI RPA 
 # ----------------------------------------------------------------------
@@ -79,36 +84,48 @@ def run_rpa_process():
         time.sleep(2) 
         # *****************************************
 
-        wait = WebDriverWait(driver, 10) # Dùng 10 giây
         
         # *** KHẮC PHỤC LỖI IFRAME ***
+        # Dùng WebDriverWait mặc định 7 giây cho lần chờ này
+        wait_iframe = WebDriverWait(driver, 7) 
+        
         try:
             # 1a. Thử chuyển đổi sang iframe đầu tiên (thường là iframe duy nhất)
             logging.info("1b. Đang thử chuyển đổi sang iframe (Nếu có)...")
-            wait.until(EC.frame_to_be_available_and_switch_to_it((By.TAG_NAME, "iframe")))
+            wait_iframe.until(EC.frame_to_be_available_and_switch_to_it((By.TAG_NAME, "iframe")))
             logging.info("   -> Đã chuyển đổi thành công sang iframe.")
         except:
             # Bỏ qua nếu không tìm thấy iframe (Không phải mọi trang đều dùng iframe)
             logging.info("   -> Không tìm thấy iframe hoặc lỗi chuyển đổi. Tiếp tục ở khung chính.")
             pass
         # *****************************
-        wait = WebDriverWait(driver, 20)
+        
+        # ĐỊNH NGHĨA LẠI ĐỐI TƯỢNG CHỜ CHUNG (ĐÃ GIẢM TỪ 20S CÒN 7S)
+        wait = WebDriverWait(driver, 7)
         
         # 2. CHỌN "TRUNG HỌC CƠ SỞ"
         logging.info("2. Đang thực hiện tương tác UI.")
         
-        # 2.1. Chờ input dropdown xuất hiện và click bằng JAVASCRIPT
-        logging.info("2.1. Đang tìm kiếm và click vào dropdown chọn cấp trường bằng JavaScript...")
+        # 2.1. Chờ input dropdown xuất hiện (CHỈ CẦN TỒN TẠI)
+        logging.info("2.1. Đang tìm kiếm dropdown bằng Value và click (JavaScript)...")
 
-        # Chỉ cần chờ phần tử có mặt (presence), không cần chờ clickable nữa
-        dropdown_input = wait.until(
-            EC.visibility_of_element_located((By.XPATH, XPATH_DROPDOWN_INPUT))
-        )
+        try:
+            # Chỉ cần chờ phần tử có mặt (presence)
+            dropdown_input = wait.until(
+                EC.presence_of_element_located((By.XPATH, XPATH_DROPDOWN_INPUT))
+            )
 
-        # THỰC THI CLICK BẰNG JAVASCRIPT
-        driver.execute_script("arguments[0].click();", dropdown_input)
+            # 1. Thử click mô phỏng chuột (ActionChains)
+            ActionChains(driver).move_to_element(dropdown_input).click().perform()
+            logging.info("   -> Đã thử click thành công bằng ActionChains.")
+            
+        except Exception as e:
+            # 2. Nếu ActionChains thất bại, thử click bằng JavaScript (ép buộc)
+            logging.warning(f"   -> ActionChains thất bại ({e}). Thử click bằng JavaScript...")
+            driver.execute_script("arguments[0].click();", dropdown_input)
+            logging.info("   -> Đã click thành công bằng JavaScript (ép buộc).")
 
-        logging.info("   -> Đã click thành công (bằng JavaScript) vào ô chọn cấp trường.")
+
         time.sleep(1) 
         
         # 2.2. Chờ option "Trung học cơ sở" xuất hiện và click
@@ -124,8 +141,63 @@ def run_rpa_process():
         
         logging.info("   -> THÀNH CÔNG: Đã chọn 'Trung học cơ sở'.")
         
-        # 3. THÔNG BÁO THÀNH CÔNG VÀ CHỜ HƯỚNG DẪN TIẾP THEO
-        messagebox.showinfo("THÀNH CÔNG", "✅ Đã chọn 'Trung học cơ sở' thành công. Bot đang chờ hướng dẫn tiếp theo.")
+        # THÊM BƯỚC CHỜ ĐỒNG BỘ NỘI DUNG MỚI (Khắc phục lỗi TimeoutException mới)
+        logging.info("   -> Chờ 2 giây để danh sách Phường/Xã tải lại...")
+        time.sleep(2)
+    
+        # 3. CHỌN "PHƯỜNG HẠNH THÔNG"
+        logging.info("3. Đang thực hiện chọn Phường/Xã.")
+        
+        # 3.1. Click vào input dropdown Phường/Xã
+        logging.info("3.1. Đang tìm kiếm và click vào dropdown chọn Phường/Xã...")
+        
+        # Chiến lược click mạnh mẽ
+        try:
+            # Chờ Input Field xuất hiện
+            dropdown_input_px = wait.until(
+                EC.presence_of_element_located((By.XPATH, XPATH_DROPDOWN_PHUONGXA_INPUT))
+            )
+            # Thử click mô phỏng chuột (ActionChains)
+            ActionChains(driver).move_to_element(dropdown_input_px).click().perform()
+            logging.info("   -> Đã thử click thành công bằng ActionChains.")
+            
+        except Exception as e:
+            # Nếu ActionChains thất bại, thử click bằng JavaScript (ép buộc)
+            logging.warning(f"   -> ActionChains thất bại. Thử click bằng JavaScript...")
+            driver.execute_script("arguments[0].click();", dropdown_input_px)
+            logging.info("   -> Đã click thành công bằng JavaScript (ép buộc).")
+            
+        time.sleep(1) # Chờ 1 giây để danh sách tùy chọn tải
+        # *** BƯỚC MỚI: CUỘN CHUỘT TRONG DANH SÁCH DÀI ***
+        logging.info("3.1.5. Đang cuộn chuột tìm 'Phường Hạnh Thông'...")
+        
+        # 1. Tìm phần tử chứa danh sách (Box chứa các li)
+        dropdown_list_box = wait.until(
+            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'rcbList')]"))
+        )
+        
+        # 2. Thực hiện cuộn chuột 5 lần (hoặc 100 pixels)
+        # Sử dụng ActionChains để cuộn xuống (move_by_offset) hoặc JS
+        # Tôi sẽ dùng JavaScript vì nó ổn định hơn cho scroll
+        driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight/2", dropdown_list_box)
+        logging.info("   -> Đã cuộn giữa danh sách (Bằng JavaScript).")
+        
+        time.sleep(1) # Chờ 1 giây sau khi cuộn để phần tử xuất hiện trong DOM
+        
+        # 3.2. Chờ option "Phường Hạnh Thông" xuất hiện và click
+        logging.info("3.2. Đang tìm kiếm và click vào option 'Phường Hạnh Thông'...")
+        
+        # Chờ option Phường Hạnh Thông xuất hiện và click (Sử dụng text để tìm)
+        option_hanhthong = wait.until(
+            EC.presence_of_element_located((By.XPATH, XPATH_OPTION_HANHTHONG))
+        )
+        option_hanhthong.click()
+        
+        logging.info("   -> Đã click thành công vào 'Phường Hạnh Thông'.")
+        time.sleep(1)
+
+        # 4. CHUẨN BỊ ĐĂNG NHẬP (Phần tiếp theo)
+        logging.info("4. Đã chọn Phường/Xã. Chuẩn bị bước Đăng nhập...")
         
     except Exception as e:
         logging.error(f"!!! LỖI QUAN TRỌNG TẠI BƯỚC TỰ ĐỘNG HÓA: {e}", exc_info=True)
