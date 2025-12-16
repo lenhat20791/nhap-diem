@@ -1,14 +1,16 @@
-# Tool_nhap_diem.py
 import time
 import tkinter as tk
 from tkinter import messagebox
 from selenium import webdriver
+# PHẢI CÓ DÒNG NÀY (ĐÃ SỬA TỪ SERVICE THÀNH Service)
+from selenium.webdriver.chrome.service import Service 
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
-import logging #
+from selenium.webdriver.common.action_chains import ActionChains # Nếu bạn đã thêm
+import logging
+from webdriver_manager.chrome import ChromeDriverManager # Thư viện mới
 
 # --- CẤU HÌNH GHI LOG ---
 LOG_FILE = 'rpa_log.txt'
@@ -24,9 +26,10 @@ BROWSER_PATH = 'C:/RPA NHAP DIEM/chrome-win64/chrome.exe'
 TARGET_URL = 'https://hcm.quanlytruonghoc.edu.vn'
 
 # XPath của phần tử dropdown đầu tiên (Mầm non/Tiểu học/Trung học...)
-XPATH_DROPDOWN_INPUT = "//input[@name='ctl00$ContentPlaceHolder1$cboCapTruong_Input']"
-# XPath của option "Trung học cơ sở" khi danh sách xổ xuống
-XPATH_OPTION_THCS = "//div[@class='rcbList']//li[text()='Trung học cơ sở']"
+# XPath mới cho ô input để click mở dropdown
+XPATH_DROPDOWN_INPUT = "//input[@class='rcbInput radPreventDecorate' and @type='text']"
+# XPATH OPTION (Đã được xác nhận là đúng)
+XPATH_OPTION_THCS = "//li[text()='Trung học cơ sở']"
 
 
 # ----------------------------------------------------------------------
@@ -63,24 +66,49 @@ def run_rpa_process():
         driver.get(TARGET_URL)
         logging.info(f"   -> Đã truy cập URL: {TARGET_URL}")
         
+        # *** GIẢI PHÁP CHỜ ĐỢI TẢI JS BẮT BUỘC ***
+        logging.info("1a. Đang chờ tải JavaScript và DOM hoàn tất (Tối đa 30s)...")
+
+        # 1. Đợi trạng thái tài liệu chuyển sang 'complete'
+        WebDriverWait(driver, 30).until(
+            lambda driver: driver.execute_script("return document.readyState") == "complete"
+        )
+        logging.info("   -> Trạng thái tải trang đã hoàn tất ('complete').")
+
+        # 2. Thêm một chút chờ cứng để UI ổn định (rất cần thiết cho các form phức tạp)
+        time.sleep(2) 
+        # *****************************************
+
+        wait = WebDriverWait(driver, 10) # Dùng 10 giây
+        
+        # *** KHẮC PHỤC LỖI IFRAME ***
+        try:
+            # 1a. Thử chuyển đổi sang iframe đầu tiên (thường là iframe duy nhất)
+            logging.info("1b. Đang thử chuyển đổi sang iframe (Nếu có)...")
+            wait.until(EC.frame_to_be_available_and_switch_to_it((By.TAG_NAME, "iframe")))
+            logging.info("   -> Đã chuyển đổi thành công sang iframe.")
+        except:
+            # Bỏ qua nếu không tìm thấy iframe (Không phải mọi trang đều dùng iframe)
+            logging.info("   -> Không tìm thấy iframe hoặc lỗi chuyển đổi. Tiếp tục ở khung chính.")
+            pass
+        # *****************************
         wait = WebDriverWait(driver, 20)
         
         # 2. CHỌN "TRUNG HỌC CƠ SỞ"
         logging.info("2. Đang thực hiện tương tác UI.")
         
-        # 2.1. Chờ input dropdown xuất hiện và click để mở danh sách
-        logging.info("2.1. Đang tìm kiếm và click vào dropdown chọn cấp trường...")
-        
-        # Chờ ô Input xuất hiện và có thể click được
+        # 2.1. Chờ input dropdown xuất hiện và click bằng JAVASCRIPT
+        logging.info("2.1. Đang tìm kiếm và click vào dropdown chọn cấp trường bằng JavaScript...")
+
+        # Chỉ cần chờ phần tử có mặt (presence), không cần chờ clickable nữa
         dropdown_input = wait.until(
-            EC.element_to_be_clickable((By.XPATH, XPATH_DROPDOWN_INPUT))
+            EC.visibility_of_element_located((By.XPATH, XPATH_DROPDOWN_INPUT))
         )
-        
-        # SỬ DỤNG ACTION CHAINS ĐỂ CLICK MẠNH HƠN
-        ActionChains(driver).move_to_element(dropdown_input).click().perform() 
-        logging.info("   -> Đã click thành công vào ô chọn cấp trường.")
-        
-        # Chờ 1 giây để danh sách các option (THCS, Tiểu học,...) kịp thời xuất hiện
+
+        # THỰC THI CLICK BẰNG JAVASCRIPT
+        driver.execute_script("arguments[0].click();", dropdown_input)
+
+        logging.info("   -> Đã click thành công (bằng JavaScript) vào ô chọn cấp trường.")
         time.sleep(1) 
         
         # 2.2. Chờ option "Trung học cơ sở" xuất hiện và click
