@@ -1,7 +1,5 @@
 import time
 import traceback
-import tkinter as tk
-from tkinter import messagebox
 from selenium import webdriver
 # PHẢI CÓ DÒNG NÀY (ĐÃ SỬA TỪ SERVICE THÀNH Service)
 from selenium.webdriver.chrome.service import Service 
@@ -33,11 +31,6 @@ XPATH_OPTION_THCS = "//li[text()='Trung học cơ sở']"
 # Cho Phường/Xã
 XPATH_DROPDOWN_PHUONGXA_INPUT = "//input[@id='ctl00_ContentPlaceHolder1_rcbPhongGD_Input']"
 XPATH_OPTION_HANHTHONG = "//li[text()='Phường Hạnh Thông']"
-# SỬA LẠI XPATH TÌM BOX CUỘN BẰNG ID ĐẦY ĐỦ
-dropdown_list_box = wait.until(
-    EC.presence_of_element_located((By.ID, "ctl00_ContentPlaceHolder1_rcbPhongGD_DropDown"))
-)
-driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight/2", dropdown_list_box)
 # ----------------------------------------------------------------------
 # HÀM CHÍNH: THỰC THI RPA 
 # ----------------------------------------------------------------------
@@ -202,7 +195,7 @@ def run_rpa_process():
         
     except Exception as e:
         logging.error(f"!!! LỖI QUAN TRỌNG TẠI BƯỚC TỰ ĐỘNG HÓA: {e}", exc_info=True)
-        messagebox.showerror("LỖI TỰ ĐỘNG HÓA", f"Không thể hoàn tất thao tác. Vui lòng kiểm tra file LOG ({LOG_FILE}). Chi tiết lỗi: {e}")
+        
         
     finally:
         logging.info("--- KẾT THÚC QUÁ TRÌNH TỰ ĐỘNG HÓA ---")
@@ -242,4 +235,11 @@ def create_ui():
 
 # Chạy giao diện
 if __name__ == '__main__':
-    create_ui()
+    # 1. TẠM THỜI COMMENT DÒNG NÀY ĐỂ TẬP TRUNG DEBUG LỖI CRASH
+    # create_ui() 
+    
+    # 2. Chạy hàm chính chứa logic RPA
+    run_rpa_process()
+    
+    # 3. Giữ cửa sổ CMD mở để đọc lỗi
+    input("Đã hoàn tất. Nhấn Enter để đóng cửa sổ...")
