@@ -93,7 +93,7 @@ def run_rpa_process():
         try:
             # 1a. Thử chuyển đổi sang iframe đầu tiên (thường là iframe duy nhất)
             logging.info("1b. Đang thử chuyển đổi sang iframe (Nếu có)...")
-            wait_iframe.until(EC.frame_to_be_available_and_switch_to_it((By.TAG_NAME, "iframe")))
+            wait.until(EC.frame_to_be_available_and_switch_to_it((By.TAG_NAME, "iframe")))
             logging.info("   -> Đã chuyển đổi thành công sang iframe.")
         except:
             # Bỏ qua nếu không tìm thấy iframe (Không phải mọi trang đều dùng iframe)
