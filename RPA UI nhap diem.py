@@ -1,4 +1,5 @@
 import time
+import traceback
 import tkinter as tk
 from tkinter import messagebox
 from selenium import webdriver
