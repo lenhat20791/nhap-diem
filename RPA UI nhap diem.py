@@ -1,10 +1,15 @@
 import time
+import threading
+import pandas as pd
 import json
 import os
 import logging
 import traceback
+import unicodedata
+import re
 import tkinter as tk
 import customtkinter as ctk
+from tkinter import messagebox
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -15,6 +20,18 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from webdriver_manager.chrome import ChromeDriverManager
 
+def chuan_hoa_ten_cot(name):
+    """Biến đổi 'Họ và Tên' thành 'ho va ten', 'Điểm' thành 'diem'"""
+    if not isinstance(name, str): return str(name)
+    # Chuyển về chữ thường và xóa khoảng trắng thừa
+    name = name.lower().strip()
+    # Loại bỏ dấu tiếng Việt
+    name = ''.join(c for c in unicodedata.normalize('NFD', name)
+                   if unicodedata.category(c) != 'Mn')
+    name = name.replace('đ', 'd')
+    # Xóa các ký tự đặc biệt chỉ giữ lại chữ cái và số
+    name = re.sub(r'[^a-z0-9\s]', '', name)
+    return name
 # =========================================================
 # 1. KHAI BÁO XPATH CHÍNH XÁC NHƯ BẠN CUNG CẤP
 # =========================================================
@@ -167,43 +184,68 @@ def run_bot():
         btn_submit.click()
         
         log_info("--- ĐÃ NHẤN ĐĂNG NHẬP THÀNH CÔNG ---")
-        time.sleep(5)
+        time.sleep(5) # Chờ trang load sau đăng nhập một chút
+        show_control_panel(driver, wait)
 
     except Exception:
         log_info(f"!!! LỖI TẠI BƯỚC 5:\n{traceback.format_exc()}")
     finally:
         input("Nhấn ENTER để đóng trình duyệt...")
     
-    def thuc_hien_nhap_diem(driver, wait):
-    log_info("--- BẮT ĐẦU QUY TRÌNH GÕ ĐIỂM TỪ EXCEL ---")
+def thuc_hien_nhap_diem(driver, wait):
+    log_info("--- BẮT ĐẦU QUY TRÌNH GÕ ĐIỂM TỰ ĐỘNG ---")
     try:
-        # Đọc file Excel
+        # Pandas đọc được file Protected View mà không cần click Enable Editing
         df = pd.read_excel("danh_sach_nhap_diem.xlsx")
         
-        # 1. Click vào ô input của học sinh đầu tiên (Dựa trên ID Inspect bạn gửi)
-        # Ô đầu tiên thường là dòng ctl04
-        first_input = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[contains(@id, 'txtDIEM_HK')]")))
-        first_input.click()
+        # Tạo bản đồ tên cột: {tên_đã_chuẩn_hóa: tên_gốc_trong_excel}
+        col_map = {chuan_hoa_ten_cot(col): col for col in df.columns}
+        log_info(f"Các cột đã nhận diện: {list(col_map.keys())}")
+
+        # Tự động tìm cột Điểm và cột Tên
+        target_diem = next((orig for clean, orig in col_map.items() if 'diem' in clean), None)
+        target_ten = next((orig for clean, orig in col_map.items() if 'ten' in clean or 'hoten' in clean), None)
+
+        if not target_diem:
+            messagebox.showerror("Lỗi", "Không tìm thấy cột 'Điểm' trong file!")
+            return
+
+        # Click vào ô đầu tiên (txtDIEM_HK)
+        o_dau = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[contains(@id, 'txtDIEM_HK')]")))
+        o_dau.click()
         time.sleep(1)
         
-        # 2. Vòng lặp gõ điểm
         for index, row in df.iterrows():
-            diem_so = str(row['Diem']).replace('.', ',') # Đổi sang dấu phẩy nếu web yêu cầu
-            ten_hs = row['HoTen']
+            # Lấy điểm và đổi dấu . thành , cho hệ thống web
+            val = str(row[target_diem]).replace('.', ',')
+            ten_hs = row[target_ten] if target_ten else "Học sinh"
             
-            # Gõ điểm
-            ActionChains(driver).send_keys(diem_so).perform()
-            log_info(f"   [OK] Đã gõ {diem_so} cho {ten_hs}")
-            time.sleep(1) # Nghỉ 1s sau khi gõ
+            ActionChains(driver).send_keys(val).perform()
+            log_info(f"   [OK] {ten_hs}: {val}")
+            time.sleep(1) # Nghỉ 1s
             
-            # Nhấn phím mũi tên xuống
             if index < len(df) - 1:
                 ActionChains(driver).send_keys(Keys.ARROW_DOWN).perform()
-                time.sleep(1) # Nghỉ 1s sau khi xuống dòng
+                time.sleep(1) # Nghỉ 1s trước khi gõ dòng tiếp
                 
-        log_info("--- HOÀN TẤT NHẬP ĐIỂM ---")
-    except Exception:
-        log_info(f"!!! LỖI NHẬP ĐIỂM:\n{traceback.format_exc()}")
+        messagebox.showinfo("Thành công", "Đã nhập xong toàn bộ bảng điểm!")
+    except Exception as e:
+        log_info(f"!!! LỖI: {e}")
+def show_control_panel(driver, wait):
+    # Cửa sổ nhỏ hiện lên để bạn bấm khi đã chọn xong Lớp/Môn trên web
+    control_root = ctk.CTk()
+    control_root.title("Điều khiển RPA")
+    control_root.geometry("250x150")
+    control_root.attributes("-topmost", True) 
+
+    ctk.CTkLabel(control_root, text="Sau khi chọn Lớp/Môn xong,\nbấm nút để Bot gõ điểm:").pack(pady=10)
+    
+    def on_click():
+        # Khi bạn bấm nút, nó sẽ gọi đúng cái hàm NHẬP ĐIỂM TỪ EXCEL ở trên
+        thuc_hien_nhap_diem(driver, wait)
+
+    ctk.CTkButton(control_root, text="BẮT ĐẦU NHẬP ĐIỂM", command=on_click).pack(pady=10)
+    control_root.mainloop()    
 if __name__ == "__main__":
     show_ctk_ui()
     run_bot()
