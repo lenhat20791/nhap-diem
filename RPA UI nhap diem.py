@@ -1,245 +1,209 @@
 import time
+import json
+import os
+import logging
 import traceback
+import tkinter as tk
+import customtkinter as ctk
 from selenium import webdriver
-# PHẢI CÓ DÒNG NÀY (ĐÃ SỬA TỪ SERVICE THÀNH Service)
-from selenium.webdriver.chrome.service import Service 
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains # Nếu bạn đã thêm
-import logging
-from webdriver_manager.chrome import ChromeDriverManager # Thư viện mới
-from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
+from webdriver_manager.chrome import ChromeDriverManager
 
-# --- CẤU HÌNH GHI LOG ---
-LOG_FILE = 'rpa_log.txt'
-logging.basicConfig(
-    filename=LOG_FILE, 
-    level=logging.INFO, 
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-# --- HẾT CẤU HÌNH LOG ---
-
-# --- CẤU HÌNH CỐ ĐỊNH ---
-BROWSER_PATH = 'C:/RPA NHAP DIEM/chrome-win64/chrome.exe'
-TARGET_URL = 'https://hcm.quanlytruonghoc.edu.vn'
-
-# XPath của phần tử dropdown đầu tiên (Mầm non/Tiểu học/Trung học...)
+# =========================================================
+# 1. KHAI BÁO XPATH CHÍNH XÁC NHƯ BẠN CUNG CẤP
+# =========================================================
 XPATH_DROPDOWN_INPUT = "//input[@value='Mầm non' and @type='text']"
-# XPATH OPTION (Đã được xác nhận là đúng)
 XPATH_OPTION_THCS = "//li[text()='Trung học cơ sở']"
-# Cho Phường/Xã
+
+# Phường/Xã
 XPATH_DROPDOWN_PHUONGXA_INPUT = "//input[@id='ctl00_ContentPlaceHolder1_rcbPhongGD_Input']"
 XPATH_OPTION_HANHTHONG = "//li[contains(text(), 'Phường Hạnh Thông')]"
-# CHỌN TRƯỜNG (Input 3)
+
+# Chọn trường
 XPATH_INPUT_TRUONGHOC = "//input[@id='ctl00_ContentPlaceHolder1_cbTruongInput']"
 XPATH_ARROW_TRUONGHOC = "//a[@id='ctl00_ContentPlaceHolder1_cbTruong_Arrow']"
-# ----------------------------------------------------------------------
-# HÀM CHÍNH: THỰC THI RPA 
-# ----------------------------------------------------------------------
-def run_rpa_process():
-    """Thực hiện quy trình mở trình duyệt và chọn cấp trường (có ghi log)."""
-    
-    driver = None
-    logging.info("--- BẮT ĐẦU QUÁ TRÌNH TỰ ĐỘNG HÓA ---")
-    try:
-        # 1. KHỞI TẠO TRÌNH DUYỆT (TỰ ĐỘNG TÌM DRIVER)
-        logging.info("1. Đang khởi tạo trình duyệt Chrome (Sử dụng WebDriverManager).")
-        
-        # --- THIẾT LẬP OPTIONS ---
-        options = Options()
-        # Chỉ định đường dẫn của Chrome for Testing (Không thay đổi)
-        options.binary_location = BROWSER_PATH 
-        options.add_experimental_option("detach", True) 
-        
-        # --- KHỞI TẠO DRIVER BẰNG ChromeDriverManager ---
-        # ChromeDriverManager().install() sẽ tự động tải và cache Driver tương thích
-        driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()), 
-            options=options
-        ) 
-        
-        logging.info("   -> DRIVER VÀ BROWSER ĐÃ KHỞI TẠO THÀNH CÔNG.")
-        
-        # --- MAXIMIZE VÀ TRUY CẬP URL ---
-        driver.maximize_window() 
-        logging.info("   -> Đã maximize cửa sổ trình duyệt.")
-        
-        driver.get(TARGET_URL)
-        logging.info(f"   -> Đã truy cập URL: {TARGET_URL}")
-        
-        # *** GIẢI PHÁP CHỜ ĐỢI TẢI JS BẮT BUỘC ***
-        logging.info("1a. Đang chờ tải JavaScript và DOM hoàn tất (Tối đa 30s)...")
 
-        # 1. Đợi trạng thái tài liệu chuyển sang 'complete'
-        WebDriverWait(driver, 30).until(
-            lambda driver: driver.execute_script("return document.readyState") == "complete"
-        )
-        logging.info("   -> Trạng thái tải trang đã hoàn tất ('complete').")
+# =========================================================
+# 2. CẤU HÌNH LOGGING FORCE FLUSH
+# =========================================================
+log_file = "debug_log.txt"
+if os.path.exists(log_file): os.remove(log_file)
 
-        # 2. Thêm một chút chờ cứng để UI ổn định (rất cần thiết cho các form phức tạp)
-        time.sleep(2) 
-        # *****************************************
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.FileHandler(log_file, encoding='utf-8'), logging.StreamHandler()]
+)
 
-        
-        # *** KHẮC PHỤC LỖI IFRAME ***
-        # Dùng WebDriverWait mặc định 7 giây cho lần chờ này
-        wait_iframe = WebDriverWait(driver, 10) 
-        
+def log_info(msg):
+    logging.info(msg)
+    for handler in logging.root.handlers: handler.flush()
+
+# =========================================================
+# 3. MODULE UI CUSTOMTKINTER (GHI NHẬN & LƯU TRỮ)
+# =========================================================
+CONFIG_FILE = "login_config.json"
+
+def show_ctk_ui():
+    log_info("--- Mở UI cấu hình ---")
+    ctk.set_appearance_mode("System")
+    ctk.set_default_color_theme("blue")
+
+    config = {"username": "", "password": "", "remember": False}
+    if os.path.exists(CONFIG_FILE):
         try:
-            # 1a. Thử chuyển đổi sang iframe đầu tiên (thường là iframe duy nhất)
-            logging.info("1b. Đang thử chuyển đổi sang iframe (Nếu có)...")
-            wait.until(EC.frame_to_be_available_and_switch_to_it((By.TAG_NAME, "iframe")))
-            logging.info("   -> Đã chuyển đổi thành công sang iframe.")
-        except:
-            # Bỏ qua nếu không tìm thấy iframe (Không phải mọi trang đều dùng iframe)
-            logging.info("   -> Không tìm thấy iframe hoặc lỗi chuyển đổi. Tiếp tục ở khung chính.")
-            pass
-        # *****************************
-        
-        # ĐỊNH NGHĨA LẠI ĐỐI TƯỢNG CHỜ CHUNG (ĐÃ GIẢM TỪ 20S CÒN 7S)
-        wait = WebDriverWait(driver, 7)
-        
-        # 2. CHỌN "TRUNG HỌC CƠ SỞ"
-        logging.info("2. Đang thực hiện tương tác UI.")
-        
-        # 2.1. Chờ input dropdown xuất hiện (CHỈ CẦN TỒN TẠI)
-        logging.info("2.1. Đang tìm kiếm dropdown bằng Value và click (JavaScript)...")
+            with open(CONFIG_FILE, "r") as f: config = json.load(f)
+        except: pass
 
-        try:
-            # Chỉ cần chờ phần tử có mặt (presence)
-            dropdown_input = wait.until(
-                EC.presence_of_element_located((By.XPATH, XPATH_DROPDOWN_INPUT))
-            )
+    root = ctk.CTk()
+    root.title("RPA Đăng Nhập")
+    root.geometry("350x300")
+    root.attributes("-topmost", True)
 
-            # 1. Thử click mô phỏng chuột (ActionChains)
-            ActionChains(driver).move_to_element(dropdown_input).click().perform()
-            logging.info("   -> Đã thử click thành công bằng ActionChains.")
-            
-        except Exception as e:
-            # 2. Nếu ActionChains thất bại, thử click bằng JavaScript (ép buộc)
-            logging.warning(f"   -> ActionChains thất bại ({e}). Thử click bằng JavaScript...")
-            driver.execute_script("arguments[0].click();", dropdown_input)
-            logging.info("   -> Đã click thành công bằng JavaScript (ép buộc).")
+    ctk.CTkLabel(root, text="Tài khoản (CCCD):", font=ctk.CTkFont(size=12, weight="bold")).pack(pady=(20,5))
+    ent_user = ctk.CTkEntry(root, width=250)
+    ent_user.insert(0, config.get("username", ""))
+    ent_user.pack()
 
+    ctk.CTkLabel(root, text="Mật khẩu:", font=ctk.CTkFont(size=12, weight="bold")).pack(pady=5)
+    ent_pass = ctk.CTkEntry(root, width=250, show="*")
+    ent_pass.insert(0, config.get("password", ""))
+    ent_pass.pack()
 
-        time.sleep(1) 
-        
-        # 2.2. Chờ option "Trung học cơ sở" xuất hiện và click
-        logging.info("2.2. Đang tìm kiếm và click vào option 'Trung học cơ sở'...")
-        
-        # Chờ option THCS xuất hiện (presence_of_element_located)
-        option_thcs = wait.until(
-            EC.presence_of_element_located((By.XPATH, XPATH_OPTION_THCS))
-        )
-        
-        # Click vào option THCS
-        option_thcs.click()
-        
-        logging.info("   -> THÀNH CÔNG: Đã chọn 'Trung học cơ sở'.")
-        
-        # THÊM BƯỚC CHỜ ĐỒNG BỘ NỘI DUNG MỚI (Khắc phục lỗi TimeoutException mới)
-        logging.info("   -> Chờ 2 giây để danh sách Phường/Xã tải lại...")
-        time.sleep(4)
-    
-        # 3. Đang thực hiện chọn Phường/Xã.
-        logging.info("3. Bắt đầu chuỗi thao tác bàn phím liên tiếp.")
-        
-        # 3.1. Tìm kiếm và click vào dropdown chọn Phường/Xã
-        dropdown_input_px = wait.until(
-            EC.visibility_of_element_located((By.XPATH, XPATH_DROPDOWN_PHUONGXA_INPUT))
-        )
-        ActionChains(driver).move_to_element(dropdown_input_px).click().perform()
-        
-        # 3.2. Gõ chữ 'Thông' và chờ 2 giây
-        logging.info("   -> Gõ 'Thông' và chờ 2s.")
-        dropdown_input_px.send_keys("Thông")
-        time.sleep(2)
-        
-        # 3.3. Bấm phím mũi tên xuống 1 lần và chờ 1 giây
-        logging.info("   -> Bấm Mũi tên xuống (1 lần) và chờ 1s.")
-        dropdown_input_px.send_keys(Keys.ARROW_DOWN)
-        time.sleep(1)
-        
-        # 3.4. Bấm TAB lần 1 và chờ 2 giây
-        logging.info("   -> Bấm TAB lần 1 và chờ 2s.")
-        dropdown_input_px.send_keys(Keys.TAB)
-        time.sleep(2)
-        
-        # 3.5. Bấm TAB lần 2 và chờ 1 giây
-        # Lưu ý: TAB lần này sẽ đưa focus sang Input Trường học
-        logging.info("   -> Bấm TAB lần 2 và chờ 1s.")
-        try:
-            dropdown_input_px.send_keys(Keys.TAB)
-        except:
-            # Nếu TAB 1 làm thay đổi DOM gây lỗi Stale, ta dùng ActionChains để gửi phím TAB chung
-            ActionChains(driver).send_keys(Keys.TAB).perform()
-        time.sleep(1)
-        
-        # 4. CHỌN TRƯỜNG HỌC (Bằng phím mũi tên)
-        logging.info("4. Thực hiện nhấn Mũi tên xuống 4 lần trên trường học.")
-        
-        for i in range(1, 5):
-            ActionChains(driver).send_keys(Keys.ARROW_DOWN).perform()
-            logging.info(f"   -> Đã nhấn Mũi tên xuống lần {i}/4.")
-            time.sleep(1) # Nghỉ 1s giữa mỗi lần bấm
-            
-        # Kết thúc: Bấm Enter để chọn trường
-        logging.info("   -> Bấm Enter để xác nhận chọn Trường.")
-        ActionChains(driver).send_keys(Keys.ENTER).perform()
-        time.sleep(2)
+    var_rem = tk.BooleanVar(value=config.get("remember", False))
+    ctk.CTkCheckBox(root, text="Ghi nhớ tài khoản", variable=var_rem).pack(pady=10)
 
-        # 5. ĐĂNG NHẬP HỆ THỐNG (BƯỚC TIẾP THEO)
-        logging.info("5. Chuẩn bị bước Đăng nhập...")
-        
-    except Exception as e:
-        logging.error(f"!!! LỖI QUAN TRỌNG TẠI BƯỚC TỰ ĐỘNG HÓA: {e}", exc_info=True)
-        
-        
-    finally:
-        logging.info("--- KẾT THÚC QUÁ TRÌNH TỰ ĐỘNG HÓA ---")
-        pass
+    def save_and_run():
+        data = {
+            "username": ent_user.get() if var_rem.get() else "",
+            "password": ent_pass.get() if var_rem.get() else "",
+            "remember": var_rem.get()
+        }
+        with open(CONFIG_FILE, "w") as f: json.dump(data, f)
+        log_info("--- Đã lưu tài khoản. Đóng UI để chạy Bot ---")
+        root.destroy()
 
-# ----------------------------------------------------------------------
-# XÂY DỰNG GIAO DIỆN NGƯỜI DÙNG (UI)
-# ----------------------------------------------------------------------
-def create_ui():
-    root = tk.Tk()
-    root.title("Công Cụ Tự Động Đăng Nhập (Tool nhập điểm)")
-    
-    def on_start_click():
-        root.withdraw() # Ẩn cửa sổ UI khi đang chạy
-        run_rpa_process()
-        root.deiconify() # Hiển thị lại cửa sổ UI sau khi xong
-
-    # 1. Tiêu đề
-    tk.Label(root, text="Tự động truy cập và chọn 'Trung học cơ sở':", font=('Arial', 10, 'bold')).pack(pady=5, padx=10, anchor='w')
-
-    # 2. Ô Hiển thị URL
-    url_entry = tk.Entry(root, width=70, bd=2, relief="groove")
-    url_entry.pack(pady=5, padx=10)
-    url_entry.insert(0, TARGET_URL)
-    url_entry.config(state='readonly') # Không cho người dùng sửa
-
-    # 3. Nút Bắt đầu
-    start_button = tk.Button(root, text="🚀 BẮT ĐẦU TỰ ĐỘNG HÓA", command=on_start_click, 
-                             bg='#4CAF50', fg='white', font=('Arial', 12, 'bold'))
-    start_button.pack(pady=20, padx=10)
-    
-    # 4. Ghi chú
-    tk.Label(root, text="Bot sẽ tự động mở Chrome và chọn mục đầu tiên.", 
-             fg='gray', font=('Arial', 8)).pack(pady=5, padx=10)
-
+    ctk.CTkButton(root, text="BẮT ĐẦU CHẠY", command=save_and_run).pack(pady=15)
     root.mainloop()
 
-# Chạy giao diện
-if __name__ == '__main__':
-    # 1. TẠM THỜI COMMENT DÒNG NÀY ĐỂ TẬP TRUNG DEBUG LỖI CRASH
-    # create_ui() 
+# =========================================================
+# 4. MODULE RPA (DỰA TRÊN 100% CHI TIẾT GỐC)
+# =========================================================
+def run_bot():
+    log_info("--- KHỞI ĐỘNG CHROME ---")
+    options = Options()
+    options.add_argument("--start-maximized")
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    wait = WebDriverWait(driver, 20)
     
-    # 2. Chạy hàm chính chứa logic RPA
-    run_rpa_process()
+    try:
+        driver.get("https://hcm.quanlytruonghoc.edu.vn")
+        
+        # Bước 2: Chọn Cấp trường
+        log_info("2. Chọn Cấp trường (Sử dụng XPATH giá trị Mầm non)...")
+        dropdown_cap = wait.until(EC.element_to_be_clickable((By.XPATH, XPATH_DROPDOWN_INPUT)))
+        dropdown_cap.click()
+        time.sleep(1)
+        wait.until(EC.element_to_be_clickable((By.XPATH, XPATH_OPTION_THCS))).click()
+        time.sleep(3)
+
+        # Bước 3: Thao tác Phường/Xã (Sử dụng ID bạn cung cấp)
+        log_info("3. Nhập Phường/Xã...")
+        input_px = wait.until(EC.visibility_of_element_located((By.XPATH, XPATH_DROPDOWN_PHUONGXA_INPUT)))
+        input_px.click()
+        input_px.send_keys("Thông")
+        time.sleep(2)
+        
+        input_px.send_keys(Keys.ARROW_DOWN)
+        time.sleep(1)
+        input_px.send_keys(Keys.TAB)
+        time.sleep(2)
+        
+        # TAB lần 2 sang Trường học
+        ActionChains(driver).send_keys(Keys.TAB).perform()
+        time.sleep(1)
+
+        # Bước 4: Thao tác Trường học (Nhấn xuống 4 lần)
+        log_info("4. Nhấn xuống 4 lần chọn Trường...")
+        for i in range(1, 5):
+            ActionChains(driver).send_keys(Keys.ARROW_DOWN).perform()
+            time.sleep(1)
+        
+        ActionChains(driver).send_keys(Keys.ENTER).perform()
+        log_info("--- ĐÃ CHUYỂN SANG TRANG SSO ---")
+        time.sleep(5)
+        # BƯỚC 5: TỰ ĐỘNG ĐIỀN TÀI KHOẢN TỪ FILE JSON
+        log_info("5. Đang đọc cấu hình và điền tài khoản vào SSO...")
+        
+        # Đọc dữ liệu từ file JSON đã lưu từ UI
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r") as f:
+                config_data = json.load(f)
+                u_name = config_data.get("username", "")
+                p_word = config_data.get("password", "")
+        else:
+            log_info("!!! Không tìm thấy file cấu hình login_config.json")
+            return
+
+        # Đợi các ô input xuất hiện (Sử dụng ID từ hình Inspect bạn gửi)
+        user_field = wait.until(EC.visibility_of_element_located((By.ID, "UserName")))
+        pass_field = driver.find_element(By.ID, "Password") # Thường Password sẽ đi cùng UserName
+        
+        # Điền thông tin
+        user_field.send_keys(u_name)
+        log_info(f"   -> Đã điền tài khoản: {u_name}")
+        time.sleep(0.5)
+        pass_field.send_keys(p_word)
+        log_info("   -> Đã điền mật khẩu.")
+        
+        # Click nút Đăng nhập (Dùng XPATH dựa trên cấu trúc container-login100)
+        btn_submit = driver.find_element(By.XPATH, "//button[contains(@class, 'login100-form-btn')]")
+        btn_submit.click()
+        
+        log_info("--- ĐÃ NHẤN ĐĂNG NHẬP THÀNH CÔNG ---")
+        time.sleep(5)
+
+    except Exception:
+        log_info(f"!!! LỖI TẠI BƯỚC 5:\n{traceback.format_exc()}")
+    finally:
+        input("Nhấn ENTER để đóng trình duyệt...")
     
-    # 3. Giữ cửa sổ CMD mở để đọc lỗi
-    input("Đã hoàn tất. Nhấn Enter để đóng cửa sổ...")
+    def thuc_hien_nhap_diem(driver, wait):
+    log_info("--- BẮT ĐẦU QUY TRÌNH GÕ ĐIỂM TỪ EXCEL ---")
+    try:
+        # Đọc file Excel
+        df = pd.read_excel("danh_sach_nhap_diem.xlsx")
+        
+        # 1. Click vào ô input của học sinh đầu tiên (Dựa trên ID Inspect bạn gửi)
+        # Ô đầu tiên thường là dòng ctl04
+        first_input = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[contains(@id, 'txtDIEM_HK')]")))
+        first_input.click()
+        time.sleep(1)
+        
+        # 2. Vòng lặp gõ điểm
+        for index, row in df.iterrows():
+            diem_so = str(row['Diem']).replace('.', ',') # Đổi sang dấu phẩy nếu web yêu cầu
+            ten_hs = row['HoTen']
+            
+            # Gõ điểm
+            ActionChains(driver).send_keys(diem_so).perform()
+            log_info(f"   [OK] Đã gõ {diem_so} cho {ten_hs}")
+            time.sleep(1) # Nghỉ 1s sau khi gõ
+            
+            # Nhấn phím mũi tên xuống
+            if index < len(df) - 1:
+                ActionChains(driver).send_keys(Keys.ARROW_DOWN).perform()
+                time.sleep(1) # Nghỉ 1s sau khi xuống dòng
+                
+        log_info("--- HOÀN TẤT NHẬP ĐIỂM ---")
+    except Exception:
+        log_info(f"!!! LỖI NHẬP ĐIỂM:\n{traceback.format_exc()}")
+if __name__ == "__main__":
+    show_ctk_ui()
+    run_bot()
