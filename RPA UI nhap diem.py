@@ -10,6 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains # Nếu bạn đã thêm
 import logging
 from webdriver_manager.chrome import ChromeDriverManager # Thư viện mới
+from selenium.webdriver.common.keys import Keys
 
 # --- CẤU HÌNH GHI LOG ---
 LOG_FILE = 'rpa_log.txt'
@@ -30,7 +31,10 @@ XPATH_DROPDOWN_INPUT = "//input[@value='Mầm non' and @type='text']"
 XPATH_OPTION_THCS = "//li[text()='Trung học cơ sở']"
 # Cho Phường/Xã
 XPATH_DROPDOWN_PHUONGXA_INPUT = "//input[@id='ctl00_ContentPlaceHolder1_rcbPhongGD_Input']"
-XPATH_OPTION_HANHTHONG = "//li[text()='Phường Hạnh Thông']"
+XPATH_OPTION_HANHTHONG = "//li[contains(text(), 'Phường Hạnh Thông')]"
+# CHỌN TRƯỜNG (Input 3)
+XPATH_INPUT_TRUONGHOC = "//input[@id='ctl00_ContentPlaceHolder1_cbTruongInput']"
+XPATH_ARROW_TRUONGHOC = "//a[@id='ctl00_ContentPlaceHolder1_cbTruong_Arrow']"
 # ----------------------------------------------------------------------
 # HÀM CHÍNH: THỰC THI RPA 
 # ----------------------------------------------------------------------
@@ -81,7 +85,7 @@ def run_rpa_process():
         
         # *** KHẮC PHỤC LỖI IFRAME ***
         # Dùng WebDriverWait mặc định 7 giây cho lần chờ này
-        wait_iframe = WebDriverWait(driver, 7) 
+        wait_iframe = WebDriverWait(driver, 10) 
         
         try:
             # 1a. Thử chuyển đổi sang iframe đầu tiên (thường là iframe duy nhất)
@@ -137,7 +141,7 @@ def run_rpa_process():
         
         # THÊM BƯỚC CHỜ ĐỒNG BỘ NỘI DUNG MỚI (Khắc phục lỗi TimeoutException mới)
         logging.info("   -> Chờ 2 giây để danh sách Phường/Xã tải lại...")
-        time.sleep(2)
+        time.sleep(4)
     
         # 3. CHỌN "PHƯỜNG HẠNH THÔNG"
         logging.info("3. Đang thực hiện chọn Phường/Xã.")
@@ -158,40 +162,66 @@ def run_rpa_process():
         except Exception as e:
             # Nếu ActionChains thất bại, thử click bằng JavaScript (ép buộc)
             logging.warning(f"   -> ActionChains thất bại. Thử click bằng JavaScript...")
+            # Sử dụng biến đã được tìm thấy trong khối try: dropdown_input_px
             driver.execute_script("arguments[0].click();", dropdown_input_px)
             logging.info("   -> Đã click thành công bằng JavaScript (ép buộc).")
             
         time.sleep(1) # Chờ 1 giây để danh sách tùy chọn tải
-        # *** BƯỚC MỚI: CUỘN CHUỘT TRONG DANH SÁCH DÀI ***
-        logging.info("3.1.5. Đang cuộn chuột tìm 'Phường Hạnh Thông'...")
         
-        # 1. Tìm phần tử chứa danh sách (Box chứa các li)
-        dropdown_list_box = wait.until(
-            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'rcbList')]"))
-        )
+        # *** BƯỚC MỚI: NHẬP VÀO INPUT ĐỂ LỌC DANH SÁCH ***
+        logging.info("3.1.5. Đang nhập 'Thông' vào input để lọc danh sách...")
+        # 3.1.1. Gõ chữ 'Thông' vào input
+        dropdown_input_px.send_keys("Thông")
+        logging.info("   -> Đã nhập 'Thông'. Danh sách đã được lọc.")
+        time.sleep(2)
+        # 3.1.2. CHỜ 2 GIÂY ĐỂ DANH SÁCH LỌC ỔN ĐỊNH
+        logging.info("   -> Chờ 2 giây để danh sách lọc ổn định...")
+        time.sleep(2)
         
-        # 2. Thực hiện cuộn chuột 5 lần (hoặc 100 pixels)
-        # Sử dụng ActionChains để cuộn xuống (move_by_offset) hoặc JS
-        # Tôi sẽ dùng JavaScript vì nó ổn định hơn cho scroll
-        driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight/2", dropdown_list_box)
-        logging.info("   -> Đã cuộn giữa danh sách (Bằng JavaScript).")
+        # 3.1.3. Bấm phím mũi tên xuống (ARROW_DOWN)
+        logging.info("   -> Bấm phím mũi tên xuống để chọn 'Phường Hạnh Thông'...")
+        dropdown_input_px.send_keys(Keys.ARROW_DOWN)
         
-        time.sleep(1) # Chờ 1 giây sau khi cuộn để phần tử xuất hiện trong DOM
+        # 3.1.4 Bấm phím TAB lần 1
+        logging.info("3.2. Bấm phím TAB để xác nhận giá trị và kích hoạt Postback.")
+        dropdown_input_px.send_keys(Keys.TAB)
         
-        # 3.2. Chờ option "Phường Hạnh Thông" xuất hiện và click
-        logging.info("3.2. Đang tìm kiếm và click vào option 'Phường Hạnh Thông'...")
+        # Chờ 2 giây
+        time.sleep(2)
         
-        # Chờ option Phường Hạnh Thông xuất hiện và click (Sử dụng text để tìm)
-        option_hanhthong = wait.until(
-            EC.presence_of_element_located((By.XPATH, XPATH_OPTION_HANHTHONG))
-        )
-        option_hanhthong.click()
+        # 3.1.5 Click vào input dropdown Phường/Xã lần 2
+        logging.info("3.1. Đang tìm kiếm và click vào dropdown chọn Phường/Xã...")
         
-        logging.info("   -> Đã click thành công vào 'Phường Hạnh Thông'.")
-        time.sleep(1)
+        # Chiến lược click mạnh mẽ
+        try:
+            # Chờ Input Field xuất hiện
+            dropdown_input_px = wait.until(
+                EC.presence_of_element_located((By.XPATH, XPATH_DROPDOWN_PHUONGXA_INPUT))
+            )
+            # Thử click mô phỏng chuột (ActionChains)
+            ActionChains(driver).move_to_element(dropdown_input_px).click().perform()
+            logging.info("   -> Đã thử click thành công bằng ActionChains.")
+            
+        except Exception as e:
+            # Nếu ActionChains thất bại, thử click bằng JavaScript (ép buộc)
+            logging.warning(f"   -> ActionChains thất bại. Thử click bằng JavaScript...")
+            # Sử dụng biến đã được tìm thấy trong khối try: dropdown_input_px
+            driver.execute_script("arguments[0].click();", dropdown_input_px)
+            logging.info("   -> Đã click thành công bằng JavaScript (ép buộc).")
+            
+        time.sleep(1) # Chờ 1 giây để danh sách tùy chọn tải
+        
+        logging.info("   -> THÀNH CÔNG: Đã chọn 'Phường Hạnh Thông' bằng TAB. Bắt đầu chờ DOM ổn định.")
+        
+        # 3.1.4 Bấm phím TAB lần 2
+        logging.info("3.2. Bấm phím TAB để xác nhận giá trị và kích hoạt Postback.")
+        dropdown_input_px.send_keys(Keys.TAB)
+        
+        # Chờ 2 giây
+        time.sleep(2)
 
-        # 4. CHUẨN BỊ ĐĂNG NHẬP (Phần tiếp theo)
-        logging.info("4. Đã chọn Phường/Xã. Chuẩn bị bước Đăng nhập...")
+        # 5. ĐĂNG NHẬP HỆ THỐNG (BƯỚC TIẾP THEO)
+        logging.info("5. Chuẩn bị bước Đăng nhập...")
         
     except Exception as e:
         logging.error(f"!!! LỖI QUAN TRỌNG TẠI BƯỚC TỰ ĐỘNG HÓA: {e}", exc_info=True)
