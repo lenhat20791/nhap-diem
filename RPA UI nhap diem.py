@@ -143,81 +143,51 @@ def run_rpa_process():
         logging.info("   -> Chờ 2 giây để danh sách Phường/Xã tải lại...")
         time.sleep(4)
     
-        # 3. CHỌN "PHƯỜNG HẠNH THÔNG"
-        logging.info("3. Đang thực hiện chọn Phường/Xã.")
+        # 3. Đang thực hiện chọn Phường/Xã.
+        logging.info("3. Bắt đầu chuỗi thao tác bàn phím liên tiếp.")
         
-        # 3.1. Click vào input dropdown Phường/Xã
-        logging.info("3.1. Đang tìm kiếm và click vào dropdown chọn Phường/Xã...")
+        # 3.1. Tìm kiếm và click vào dropdown chọn Phường/Xã
+        dropdown_input_px = wait.until(
+            EC.visibility_of_element_located((By.XPATH, XPATH_DROPDOWN_PHUONGXA_INPUT))
+        )
+        ActionChains(driver).move_to_element(dropdown_input_px).click().perform()
         
-        # Chiến lược click mạnh mẽ
-        try:
-            # Chờ Input Field xuất hiện
-            dropdown_input_px = wait.until(
-                EC.presence_of_element_located((By.XPATH, XPATH_DROPDOWN_PHUONGXA_INPUT))
-            )
-            # Thử click mô phỏng chuột (ActionChains)
-            ActionChains(driver).move_to_element(dropdown_input_px).click().perform()
-            logging.info("   -> Đã thử click thành công bằng ActionChains.")
-            
-        except Exception as e:
-            # Nếu ActionChains thất bại, thử click bằng JavaScript (ép buộc)
-            logging.warning(f"   -> ActionChains thất bại. Thử click bằng JavaScript...")
-            # Sử dụng biến đã được tìm thấy trong khối try: dropdown_input_px
-            driver.execute_script("arguments[0].click();", dropdown_input_px)
-            logging.info("   -> Đã click thành công bằng JavaScript (ép buộc).")
-            
-        time.sleep(1) # Chờ 1 giây để danh sách tùy chọn tải
-        
-        # *** BƯỚC MỚI: NHẬP VÀO INPUT ĐỂ LỌC DANH SÁCH ***
-        logging.info("3.1.5. Đang nhập 'Thông' vào input để lọc danh sách...")
-        # 3.1.1. Gõ chữ 'Thông' vào input
+        # 3.2. Gõ chữ 'Thông' và chờ 2 giây
+        logging.info("   -> Gõ 'Thông' và chờ 2s.")
         dropdown_input_px.send_keys("Thông")
-        logging.info("   -> Đã nhập 'Thông'. Danh sách đã được lọc.")
-        time.sleep(2)
-        # 3.1.2. CHỜ 2 GIÂY ĐỂ DANH SÁCH LỌC ỔN ĐỊNH
-        logging.info("   -> Chờ 2 giây để danh sách lọc ổn định...")
         time.sleep(2)
         
-        # 3.1.3. Bấm phím mũi tên xuống (ARROW_DOWN)
-        logging.info("   -> Bấm phím mũi tên xuống để chọn 'Phường Hạnh Thông'...")
+        # 3.3. Bấm phím mũi tên xuống 1 lần và chờ 1 giây
+        logging.info("   -> Bấm Mũi tên xuống (1 lần) và chờ 1s.")
         dropdown_input_px.send_keys(Keys.ARROW_DOWN)
+        time.sleep(1)
         
-        # 3.1.4 Bấm phím TAB lần 1
-        logging.info("3.2. Bấm phím TAB để xác nhận giá trị và kích hoạt Postback.")
+        # 3.4. Bấm TAB lần 1 và chờ 2 giây
+        logging.info("   -> Bấm TAB lần 1 và chờ 2s.")
         dropdown_input_px.send_keys(Keys.TAB)
-        
-        # Chờ 2 giây
         time.sleep(2)
         
-        # 3.1.5 Click vào input dropdown Phường/Xã lần 2
-        logging.info("3.1. Đang tìm kiếm và click vào dropdown chọn Phường/Xã...")
-        
-        # Chiến lược click mạnh mẽ
+        # 3.5. Bấm TAB lần 2 và chờ 1 giây
+        # Lưu ý: TAB lần này sẽ đưa focus sang Input Trường học
+        logging.info("   -> Bấm TAB lần 2 và chờ 1s.")
         try:
-            # Chờ Input Field xuất hiện
-            dropdown_input_px = wait.until(
-                EC.presence_of_element_located((By.XPATH, XPATH_DROPDOWN_PHUONGXA_INPUT))
-            )
-            # Thử click mô phỏng chuột (ActionChains)
-            ActionChains(driver).move_to_element(dropdown_input_px).click().perform()
-            logging.info("   -> Đã thử click thành công bằng ActionChains.")
+            dropdown_input_px.send_keys(Keys.TAB)
+        except:
+            # Nếu TAB 1 làm thay đổi DOM gây lỗi Stale, ta dùng ActionChains để gửi phím TAB chung
+            ActionChains(driver).send_keys(Keys.TAB).perform()
+        time.sleep(1)
+        
+        # 4. CHỌN TRƯỜNG HỌC (Bằng phím mũi tên)
+        logging.info("4. Thực hiện nhấn Mũi tên xuống 4 lần trên trường học.")
+        
+        for i in range(1, 5):
+            ActionChains(driver).send_keys(Keys.ARROW_DOWN).perform()
+            logging.info(f"   -> Đã nhấn Mũi tên xuống lần {i}/4.")
+            time.sleep(1) # Nghỉ 1s giữa mỗi lần bấm
             
-        except Exception as e:
-            # Nếu ActionChains thất bại, thử click bằng JavaScript (ép buộc)
-            logging.warning(f"   -> ActionChains thất bại. Thử click bằng JavaScript...")
-            # Sử dụng biến đã được tìm thấy trong khối try: dropdown_input_px
-            driver.execute_script("arguments[0].click();", dropdown_input_px)
-            logging.info("   -> Đã click thành công bằng JavaScript (ép buộc).")
-            
-        time.sleep(1) # Chờ 1 giây để danh sách tùy chọn tải
-        
-        logging.info("   -> THÀNH CÔNG: Đã chọn 'Phường Hạnh Thông' bằng TAB. Bắt đầu chờ DOM ổn định.")
-        
-        # 3.1.4 Bấm phím TAB lần 2
-        logging.info("3.2. Bấm phím TAB để xác nhận giá trị và kích hoạt Postback.")
-        dropdown_input_px.send_keys(Keys.TAB)
-        
-        # Chờ 2 giây
+        # Kết thúc: Bấm Enter để chọn trường
+        logging.info("   -> Bấm Enter để xác nhận chọn Trường.")
+        ActionChains(driver).send_keys(Keys.ENTER).perform()
         time.sleep(2)
 
         # 5. ĐĂNG NHẬP HỆ THỐNG (BƯỚC TIẾP THEO)
